@@ -1,0 +1,11 @@
+version: '3.8'
+services:
+  xray:
+    image: ghcr.io/xtls/xray-core:latest
+    container_name: xray-proxy
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:10808:10808"
+    volumes:
+      - ./config.json:/etc/xray/config.json:ro
+    command: ["run", "-c", "/etc/xray/config.json"]

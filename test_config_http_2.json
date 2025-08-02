@@ -1,0 +1,41 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "port": 10828,
+      "protocol": "http",
+      "settings": {
+        "allowTransparent": false
+      }
+    },
+    {
+      "port": 10829,
+      "protocol": "socks",
+      "settings": {
+        "auth": "noauth",
+        "udp": true
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "http",
+      "settings": {
+        "servers": [
+          {
+            "address": "gate.decodo.com",
+            "port": 7000,
+            "users": [
+              {
+                "user": "user-spppy9kkam-country-us",
+                "pass": "efwhiJec4BG2g3I4~a"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

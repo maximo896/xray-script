@@ -1,0 +1,41 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "port": 10828,
+      "protocol": "http",
+      "settings": {
+        "allowTransparent": false
+      }
+    },
+    {
+      "port": 10829,
+      "protocol": "socks",
+      "settings": {
+        "auth": "noauth",
+        "udp": true
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "socks",
+      "settings": {
+        "servers": [
+          {
+            "address": "sg.cliproxy.io",
+            "port": 3010,
+            "users": [
+              {
+                "user": "pwjq54783-region-SG",
+                "pass": "qu3zauc4"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

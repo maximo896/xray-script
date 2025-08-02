@@ -1,0 +1,45 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "port": 10828,
+      "protocol": "http",
+      "settings": {
+        "allowTransparent": false
+      }
+    },
+    {
+      "port": 10829,
+      "protocol": "socks",
+      "settings": {
+        "auth": "noauth",
+        "udp": true
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "159.75.123.96",
+            "port": 47866,
+            "users": [
+              {
+                "id": "cb843b60-6412-4df5-9f15-108f18f344fb",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp"
+      }
+    }
+  ]
+}
