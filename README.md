@@ -1,4 +1,4 @@
-# v2ray-tunnel-Scripts
+# xray-script
 
 用 Python 一键拉起 **Xray** 的 Docker Compose 部署脚本：服务端走 **REALITY**，客户端根据订阅/分享链接在本地暴露 **HTTP + SOCKS5**（无认证）。
 
@@ -76,4 +76,4 @@ python client.py --stop
 
 ## 仓库
 
-<https://github.com/maximo896/v2ray-tunnel-Scripts>
+<https://github.com/maximo896/xray-script>
