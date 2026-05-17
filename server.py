@@ -34,6 +34,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
@@ -93,6 +94,38 @@ def resolve_image(image: str, mirror: str) -> str:
     if len(parts) == 2 and ("." in parts[0] or ":" in parts[0]):
         return f"{mirror.rstrip('/')}/{parts[1]}"
     return f"{mirror.rstrip('/')}/{image}"
+
+
+def parse_socks_url(url: str) -> dict:
+    url = url.strip()
+    if url.startswith("socks5://"):
+        url = "socks://" + url[len("socks5://"):]
+    if not url.startswith("socks://"):
+        raise ValueError("Upstream must be socks5:// or socks://")
+    p = urllib.parse.urlparse(url)
+    if not p.hostname or not p.port:
+        raise ValueError("Upstream socks URL must include host and port")
+    return {
+        "address": p.hostname,
+        "port": int(p.port),
+        "username": urllib.parse.unquote(p.username) if p.username else None,
+        "password": urllib.parse.unquote(p.password) if p.password else None,
+    }
+
+
+def build_socks_outbound(upstream: dict, tag: str = "proxy") -> dict:
+    server: dict = {"address": upstream["address"], "port": upstream["port"]}
+    if upstream.get("username"):
+        server["users"] = [{"user": upstream["username"], "pass": upstream.get("password") or ""}]
+    return {"protocol": "socks", "tag": tag, "settings": {"servers": [server]}}
+
+
+def _mask_secret(s: str | None) -> str:
+    if not s:
+        return ""
+    if len(s) <= 4:
+        return "*" * len(s)
+    return s[:2] + "*" * (len(s) - 4) + s[-2:]
 
 
 def configure_docker_daemon_mirror() -> bool:
@@ -231,7 +264,25 @@ def generate_reality_keys(image: str) -> tuple[str, str]:
 
 # ── config builders ───────────────────────────────────────────────────────────
 
-def build_server_config(uid, private_key, short_id, dest, sni, port) -> dict:
+def build_server_config(uid, private_key, short_id, dest, sni, port, upstream_socks: dict | None = None) -> dict:
+    if upstream_socks:
+        outbounds = [
+            build_socks_outbound(upstream_socks, tag="proxy"),
+            {"protocol": "blackhole", "tag": "blocked"},
+        ]
+        rules = [
+            {"type": "field", "ip": ["geoip:private"], "outboundTag": "blocked"},
+            {"type": "field", "outboundTag": "proxy", "network": "tcp,udp"},
+        ]
+    else:
+        outbounds = [
+            {"protocol": "freedom", "tag": "direct"},
+            {"protocol": "blackhole", "tag": "blocked"},
+        ]
+        rules = [
+            {"type": "field", "ip": ["geoip:private"], "outboundTag": "blocked"},
+            {"type": "field", "outboundTag": "direct", "network": "tcp,udp"},
+        ]
     return {
         "log": {"loglevel": "warning"},
         "inbounds": [
@@ -263,16 +314,10 @@ def build_server_config(uid, private_key, short_id, dest, sni, port) -> dict:
                 },
             }
         ],
-        "outbounds": [
-            {"protocol": "freedom", "tag": "direct"},
-            {"protocol": "blackhole", "tag": "blocked"},
-        ],
+        "outbounds": outbounds,
         "routing": {
             "domainStrategy": "IPIfNonMatch",
-            "rules": [
-                {"type": "field", "ip": ["geoip:private"], "outboundTag": "blocked"},
-                {"type": "field", "outboundTag": "direct", "network": "tcp,udp"},
-            ],
+            "rules": rules,
         },
     }
 
@@ -351,6 +396,8 @@ CN mirrors for Docker Hub (auto-written to /etc/docker/daemon.json on Linux):
                              "Auto-detected when ghcr.io is unreachable.")
     parser.add_argument("--config-dir", default="./xray-server",
                         help="Directory for generated files (default: ./xray-server)")
+    parser.add_argument("--upstream-socks5", default=None, metavar="URL",
+                        help="Forward all traffic to an upstream SOCKS5 proxy, e.g. socks5://user:pass@host:1080")
     parser.add_argument("--stop", action="store_true",
                         help="Stop and remove the running container")
     args = parser.parse_args()
@@ -371,6 +418,7 @@ CN mirrors for Docker Hub (auto-written to /etc/docker/daemon.json on Linux):
     port = args.port
     dest = args.dest
     sni = dest.split(":")[0]
+    upstream_socks = parse_socks_url(args.upstream_socks5) if args.upstream_socks5 else None
 
     print("=== Xray REALITY Server Setup ===\n")
 
@@ -401,12 +449,16 @@ CN mirrors for Docker Hub (auto-written to /etc/docker/daemon.json on Linux):
     short_id = secrets.token_hex(4)   # 8 hex chars
     print(f"[4/6] UUID     : {uid}")
     print(f"      ShortID  : {short_id}")
+    if upstream_socks:
+        u = upstream_socks
+        auth = f"{u['username']}:{_mask_secret(u.get('password'))}@" if u.get("username") else ""
+        print(f"      Upstream : socks5://{auth}{u['address']}:{u['port']}")
     print()
 
     # 5. Write configs
     print(f"[5/6] Writing config files to {CONFIG_DIR.resolve()} ...")
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    cfg = build_server_config(uid, private_key, short_id, dest, sni, port)
+    cfg = build_server_config(uid, private_key, short_id, dest, sni, port, upstream_socks=upstream_socks)
     (CONFIG_DIR / "config.json").write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
     (CONFIG_DIR / "docker-compose.yml").write_text(build_docker_compose(port, image))
     print()
