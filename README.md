@@ -16,6 +16,7 @@
 python server.py                          # 443，默认伪装 www.microsoft.com
 python server.py --port 8443              # 非特权端口
 python server.py --dest www.apple.com:443 --fp safari
+python server.py --upstream-socks5 'socks5://user:pass@1.2.3.4:1080'
 python server.py --mirror ghcr.nju.edu.cn # 指定 ghcr 镜像前缀（大陆网络）
 python server.py --stop
 ```
@@ -28,6 +29,7 @@ python server.py --stop
 | `--dest` | REALITY 目标站点，默认 `www.microsoft.com:443` |
 | `--fp` | 指纹，默认 `chrome` |
 | `--ip` | 可选，绑定/展示用 IP |
+| `--upstream-socks5` | 可选，把所有出站流量转发到上游 SOCKS5（实现“VLESS → SOCKS5”） |
 | `--mirror` | ghcr.io 镜像主机（如 `ghcr.nju.edu.cn`） |
 | `--config-dir` | 配置与 compose 目录，默认 `./xray-server` |
 | `--stop` | 停止当前 compose 栈 |
