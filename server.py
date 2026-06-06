@@ -6,6 +6,8 @@ Usage:
   python server.py                        # port 443, steal from www.microsoft.com
   python server.py --port 8443           # use unprivileged port
   python server.py --dest www.apple.com:443 --fp safari
+  python server.py --upstream-socks5 'socks5://user:pass@1.2.3.4:1080'
+  python server.py --upstream-http 'http://user:pass@1.2.3.4:8080'
   python server.py --mirror ghcr.nju.edu.cn    # use CN mirror for ghcr.io
   python server.py --stop                      # stop the running container
 
@@ -113,11 +115,33 @@ def parse_socks_url(url: str) -> dict:
     }
 
 
+def parse_http_url(url: str) -> dict:
+    url = url.strip()
+    if not url.startswith("http://"):
+        raise ValueError("Upstream must be http://")
+    p = urllib.parse.urlparse(url)
+    if not p.hostname or not p.port:
+        raise ValueError("Upstream HTTP URL must include host and port")
+    return {
+        "address": p.hostname,
+        "port": int(p.port),
+        "username": urllib.parse.unquote(p.username) if p.username else None,
+        "password": urllib.parse.unquote(p.password) if p.password else None,
+    }
+
+
 def build_socks_outbound(upstream: dict, tag: str = "proxy") -> dict:
     server: dict = {"address": upstream["address"], "port": upstream["port"]}
     if upstream.get("username"):
         server["users"] = [{"user": upstream["username"], "pass": upstream.get("password") or ""}]
     return {"protocol": "socks", "tag": tag, "settings": {"servers": [server]}}
+
+
+def build_http_outbound(upstream: dict, tag: str = "proxy") -> dict:
+    server: dict = {"address": upstream["address"], "port": upstream["port"]}
+    if upstream.get("username"):
+        server["users"] = [{"user": upstream["username"], "pass": upstream.get("password") or ""}]
+    return {"protocol": "http", "tag": tag, "settings": {"servers": [server]}}
 
 
 def _mask_secret(s: str | None) -> str:
@@ -264,10 +288,19 @@ def generate_reality_keys(image: str) -> tuple[str, str]:
 
 # ── config builders ───────────────────────────────────────────────────────────
 
-def build_server_config(uid, private_key, short_id, dest, sni, port, upstream_socks: dict | None = None) -> dict:
+def build_server_config(uid, private_key, short_id, dest, sni, port, upstream_socks: dict | None = None, upstream_http: dict | None = None) -> dict:
     if upstream_socks:
         outbounds = [
             build_socks_outbound(upstream_socks, tag="proxy"),
+            {"protocol": "blackhole", "tag": "blocked"},
+        ]
+        rules = [
+            {"type": "field", "ip": ["geoip:private"], "outboundTag": "blocked"},
+            {"type": "field", "outboundTag": "proxy", "network": "tcp,udp"},
+        ]
+    elif upstream_http:
+        outbounds = [
+            build_http_outbound(upstream_http, tag="proxy"),
             {"protocol": "blackhole", "tag": "blocked"},
         ]
         rules = [
@@ -398,6 +431,8 @@ CN mirrors for Docker Hub (auto-written to /etc/docker/daemon.json on Linux):
                         help="Directory for generated files (default: ./xray-server)")
     parser.add_argument("--upstream-socks5", default=None, metavar="URL",
                         help="Forward all traffic to an upstream SOCKS5 proxy, e.g. socks5://user:pass@host:1080")
+    parser.add_argument("--upstream-http", default=None, metavar="URL",
+                        help="Forward all traffic to an upstream HTTP proxy, e.g. http://user:pass@host:8080")
     parser.add_argument("--stop", action="store_true",
                         help="Stop and remove the running container")
     args = parser.parse_args()
@@ -419,6 +454,7 @@ CN mirrors for Docker Hub (auto-written to /etc/docker/daemon.json on Linux):
     dest = args.dest
     sni = dest.split(":")[0]
     upstream_socks = parse_socks_url(args.upstream_socks5) if args.upstream_socks5 else None
+    upstream_http = parse_http_url(args.upstream_http) if args.upstream_http else None
 
     print("=== Xray REALITY Server Setup ===\n")
 
@@ -453,12 +489,16 @@ CN mirrors for Docker Hub (auto-written to /etc/docker/daemon.json on Linux):
         u = upstream_socks
         auth = f"{u['username']}:{_mask_secret(u.get('password'))}@" if u.get("username") else ""
         print(f"      Upstream : socks5://{auth}{u['address']}:{u['port']}")
+    if upstream_http:
+        u = upstream_http
+        auth = f"{u['username']}:{_mask_secret(u.get('password'))}@" if u.get("username") else ""
+        print(f"      Upstream : http://{auth}{u['address']}:{u['port']}")
     print()
 
     # 5. Write configs
     print(f"[5/6] Writing config files to {CONFIG_DIR.resolve()} ...")
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    cfg = build_server_config(uid, private_key, short_id, dest, sni, port, upstream_socks=upstream_socks)
+    cfg = build_server_config(uid, private_key, short_id, dest, sni, port, upstream_socks=upstream_socks, upstream_http=upstream_http)
     (CONFIG_DIR / "config.json").write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
     (CONFIG_DIR / "docker-compose.yml").write_text(build_docker_compose(port, image))
     print()
