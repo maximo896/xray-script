@@ -81,6 +81,10 @@ def run(cmd: list, check=True, capture=False, verbose=True):
     return result
 
 
+def build_container_name(prefix: str) -> str:
+    return f"{prefix}-{secrets.token_hex(4)}"
+
+
 def host_reachable(host: str, port: int = 443, timeout: float = 4.0) -> bool:
     try:
         conn = socket.create_connection((host, port), timeout=timeout)
@@ -355,7 +359,7 @@ def build_server_config(uid, private_key, short_id, dest, sni, port, upstream_so
     }
 
 
-def build_docker_compose(port: int, image: str) -> str:
+def build_docker_compose(port: int, image: str, container_name: str) -> str:
     privileged_extras = ""
     if port < 1024:
         privileged_extras = (
@@ -367,7 +371,7 @@ def build_docker_compose(port: int, image: str) -> str:
 services:
   xray:
     image: {image}
-    container_name: xray-reality-server
+    container_name: {container_name}
     restart: unless-stopped
     network_mode: host
 {privileged_extras}    volumes:
@@ -499,8 +503,10 @@ CN mirrors for Docker Hub (auto-written to /etc/docker/daemon.json on Linux):
     print(f"[5/6] Writing config files to {CONFIG_DIR.resolve()} ...")
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     cfg = build_server_config(uid, private_key, short_id, dest, sni, port, upstream_socks=upstream_socks, upstream_http=upstream_http)
+    container_name = build_container_name("xray-reality-server")
     (CONFIG_DIR / "config.json").write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
-    (CONFIG_DIR / "docker-compose.yml").write_text(build_docker_compose(port, image))
+    (CONFIG_DIR / "docker-compose.yml").write_text(build_docker_compose(port, image, container_name))
+    print(f"      Container: {container_name}")
     print()
 
     # 6. Start container

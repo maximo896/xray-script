@@ -33,6 +33,7 @@ import argparse
 import base64
 import json
 import os
+import secrets
 import socket
 import subprocess
 import sys
@@ -71,6 +72,10 @@ def run(cmd: list, check=True, capture=False, verbose=True):
         kwargs["capture_output"] = True
         kwargs["text"] = True
     return subprocess.run(cmd, **kwargs)
+
+
+def build_container_name(prefix: str) -> str:
+    return f"{prefix}-{secrets.token_hex(4)}"
 
 
 def host_reachable(host: str, port: int = 443, timeout: float = 4.0) -> bool:
@@ -415,12 +420,12 @@ def build_xray_config(proxy_info: dict, local_port: int) -> dict:
     }
 
 
-def build_docker_compose(local_port: int, image: str) -> str:
+def build_docker_compose(local_port: int, image: str, container_name: str) -> str:
     return f"""\
 services:
   xray:
     image: {image}
-    container_name: xray-local-proxy
+    container_name: {container_name}
     restart: unless-stopped
     ports:
       - "127.0.0.1:{local_port}:{local_port}"
@@ -517,8 +522,10 @@ Docker Hub daemon mirrors (auto-written to /etc/docker/daemon.json on Linux root
     print(f"[3/4] Writing config files to {CONFIG_DIR.resolve()} ...")
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     xray_cfg = build_xray_config(info, local_port)
+    container_name = build_container_name("xray-local-proxy")
     (CONFIG_DIR / "config.json").write_text(json.dumps(xray_cfg, indent=2, ensure_ascii=False))
-    (CONFIG_DIR / "docker-compose.yml").write_text(build_docker_compose(local_port, image))
+    (CONFIG_DIR / "docker-compose.yml").write_text(build_docker_compose(local_port, image, container_name))
+    print(f"      Container: {container_name}")
     print()
 
     # 4. Start
