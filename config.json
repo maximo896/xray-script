@@ -1,0 +1,41 @@
+{
+  "log": {"loglevel": "warning"},
+  "inbounds": [
+    {
+      "tag": "mixed-in",
+      "port": 10808,
+      "listen": "0.0.0.0",
+      "protocol": "mixed",
+      "settings": {
+        "auth": "noauth",
+        "udp": true,
+        "userLevel": 0
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "socks",
+      "settings": {
+        "servers": [
+          {
+            "address": "usvip.arxlabs.io",
+            "port": 3010,
+            "users": [
+              {"user": "pwjq54783-region-Rand", "pass": "asdq23ed"}
+            ]
+          }
+        ]
+      },
+      "tag": "proxy"
+    },
+    {"protocol": "freedom", "tag": "direct"},
+    {"protocol": "blackhole", "tag": "blocked"}
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {"type": "field", "outboundTag": "proxy", "network": "tcp,udp"}
+    ]
+  }
+}
